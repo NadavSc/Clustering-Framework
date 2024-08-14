@@ -1,0 +1,16 @@
+﻿id,algorithm,dataset_type,n_features,n_centers,estimated_n_centers,cluster_std,init_method,accuracy
+216,gmm,iris,4,3,,,random,96.66666667
+216,gmm,iris,4,3,,,kmeans++,64.66666667
+216,gmm,iris,4,3,,,hcm,96.66666667
+216,gmm,iris,4,3,,,uniform,66
+216,gmm,iris,4,3,,,stratified,96.66666667
+217,gmm,wine,13,3,,,random,76.40449438
+217,gmm,wine,13,3,,,kmeans++,98.31460674
+217,gmm,wine,13,3,,,hcm,96.06741573
+217,gmm,wine,13,3,,,uniform,47.19101124
+217,gmm,wine,13,3,,,stratified,64.60674157
+218,gmm,breast_cancer,30,2,,,random,94.72759227
+218,gmm,breast_cancer,30,2,,,kmeans++,94.02460457
+218,gmm,breast_cancer,30,2,,,hcm,91.56414763
+218,gmm,breast_cancer,30,2,,,uniform,66.08084359
+218,gmm,breast_cancer,30,2,,,stratified,53.60281195
