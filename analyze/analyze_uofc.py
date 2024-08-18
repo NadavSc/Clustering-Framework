@@ -1,115 +1,88 @@
 import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from scipy import stats
 
 # Load the data
-data = pd.read_csv('../results/results_uofc.csv')
+data = pd.read_csv('results/results_uofc.csv')
 
-# Separate Gaussian and non-Gaussian datasets
-gaussian_data = data[data['dataset_type'] == 'gaussian']
-non_gaussian_data = data[data['dataset_type'] != 'gaussian']
+# Print column names to verify
+print("Columns in the dataset:", data.columns.tolist())
 
 
-def analyze_gaussian_data(df):
-    # Group by n_features and cluster_std
-    grouped = df.groupby(['n_features', 'cluster_std'])
+# Function to plot accuracy comparison
+def plot_accuracy_comparison(df, x, y, hue, title):
+    if x not in df.columns or y not in df.columns or hue not in df.columns:
+        print(f"Error: One or more columns ({x}, {y}, {hue}) not found in the dataframe.")
+        return
 
-    # Calculate mean accuracy for each group
-    mean_accuracy = grouped['accuracy'].mean().unstack()
+    plt.figure(figsize=(12, 6))
+    sns.boxplot(x=x, y=y, hue=hue, data=df)
+    plt.title(title)
+    plt.ylabel('Accuracy')
+    plt.xticks(rotation=45)
+    plt.legend(title=hue)
+    plt.tight_layout()
+    plt.show()
 
-    # Plot heatmap
+
+# Function to plot heatmap
+def plot_heatmap(df, title):
     plt.figure(figsize=(12, 8))
-    sns.heatmap(mean_accuracy, annot=True, cmap='YlOrRd', fmt='.1f')
-    plt.title('Mean Accuracy by Number of Features and Cluster Standard Deviation')
-    plt.xlabel('Cluster Standard Deviation')
-    plt.ylabel('Number of Features')
-    plt.savefig('gaussian_heatmap.png')
-    plt.close()
-
-    return mean_accuracy
+    sns.heatmap(df, annot=True, cmap='YlGnBu', fmt='.1f')
+    plt.title(title)
+    plt.tight_layout()
+    plt.show()
 
 
-def analyze_cluster_estimation(df):
-    # Calculate the percentage of correct estimations
-    df['correct_estimation'] = (df['n_centers'] == df['estimated_n_centers']).astype(int)
-    estimation_accuracy = df.groupby(['n_features', 'cluster_std'])['correct_estimation'].mean().unstack()
+# 1. Overall accuracy comparison
+plot_accuracy_comparison(data, 'criterion', 'accuracy', 'cluster_std',
+                         'Accuracy Comparison Across Criteria and Cluster Std')
 
-    # Plot heatmap
-    plt.figure(figsize=(12, 8))
-    sns.heatmap(estimation_accuracy, annot=True, cmap='YlOrRd', fmt='.2f')
-    plt.title('Cluster Number Estimation Accuracy')
-    plt.xlabel('Cluster Standard Deviation')
-    plt.ylabel('Number of Features')
-    plt.savefig('cluster_estimation_heatmap.png')
-    plt.close()
+# 2. Accuracy comparison for different number of centers
+plot_accuracy_comparison(data[data['n_centers'].isin([2, 3, 4])], 'criterion', 'accuracy', 'n_centers',
+                         'Accuracy Comparison Across Criteria and Number of Centers')
 
-    return estimation_accuracy
+# 3. Heatmap of average accuracy for each criterion and cluster_std
+heatmap_data = data.pivot_table(values='accuracy', index='criterion', columns='cluster_std', aggfunc='mean')
+plot_heatmap(heatmap_data, 'Average Accuracy Heatmap: Criterion vs Cluster Std')
 
+# 4. Analyze the impact of cluster_std on accuracy
+std_impact = data.groupby('cluster_std')['accuracy'].mean().sort_values(ascending=False)
+print("Impact of cluster_std on average accuracy:")
+print(std_impact)
 
-def analyze_non_gaussian_data(df):
-    results = df.groupby('dataset_type').agg({
-        'n_features': 'first',
-        'n_centers': 'first',
-        'estimated_n_centers': 'first',
-        'accuracy': 'first'
-    })
-    return results
+# 5. Analyze the performance of different criteria
+criteria_performance = data.groupby('criterion')['accuracy'].mean().sort_values(ascending=False)
+print("\nPerformance of different criteria:")
+print(criteria_performance)
 
+# 6. Analyze the impact of number of centers on accuracy
+centers_impact = data.groupby('n_centers')['accuracy'].mean().sort_values(ascending=False)
+print("\nImpact of number of centers on average accuracy:")
+print(centers_impact)
 
-def plot_accuracy_distribution(gaussian_accuracies, non_gaussian_accuracies):
-    plt.figure(figsize=(10, 6))
-    sns.histplot(gaussian_accuracies, kde=True, label='Gaussian')
-    sns.histplot(non_gaussian_accuracies, kde=True, label='Non-Gaussian')
-    plt.title('Distribution of Accuracies')
-    plt.xlabel('Accuracy')
-    plt.ylabel('Frequency')
-    plt.legend()
-    plt.savefig('accuracy_distribution.png')
-    plt.close()
+# 7. Analyze the relationship between estimated_n_centers and actual n_centers
+data['center_estimation_error'] = abs(data['estimated_n_centers'] - data['n_centers'])
+center_estimation = data.groupby('criterion')['center_estimation_error'].mean().sort_values()
+print("\nAverage center estimation error for each criterion:")
+print(center_estimation)
 
+# 8. Plot the relationship between cluster_std and accuracy for each criterion
+plt.figure(figsize=(12, 6))
+for criterion in data['criterion'].unique():
+    criterion_data = data[data['criterion'] == criterion]
+    plt.plot(criterion_data['cluster_std'], criterion_data['accuracy'], label=criterion, marker='o')
+plt.xlabel('Cluster Std')
+plt.ylabel('Accuracy')
+plt.title('Accuracy vs Cluster Std for Each Criterion')
+plt.legend()
+plt.grid(True)
+plt.show()
 
-# Analyze Gaussian data
-gaussian_results = analyze_gaussian_data(gaussian_data)
-cluster_estimation_results = analyze_cluster_estimation(gaussian_data)
-
-# Analyze non-Gaussian data
-non_gaussian_results = analyze_non_gaussian_data(non_gaussian_data)
-
-# Plot accuracy distribution
-plot_accuracy_distribution(gaussian_data['accuracy'], non_gaussian_data['accuracy'])
-
-# Perform t-test between Gaussian and non-Gaussian accuracies
-gaussian_accuracies = gaussian_data['accuracy']
-non_gaussian_accuracies = non_gaussian_data['accuracy']
-t_stat, p_value = stats.ttest_ind(gaussian_accuracies, non_gaussian_accuracies)
-
-print("Gaussian Data Analysis:")
-print(gaussian_results)
-print("\nCluster Estimation Accuracy:")
-print(cluster_estimation_results)
-print("\nNon-Gaussian Data Analysis:")
-print(non_gaussian_results)
-
-print(f"\nt-test results:")
-print(f"t-statistic: {t_stat}")
-print(f"p-value: {p_value}")
-
-# Calculate overall statistics
-overall_mean = data['accuracy'].mean()
-overall_std = data['accuracy'].std()
-gaussian_mean = gaussian_accuracies.mean()
-gaussian_std = gaussian_accuracies.std()
-non_gaussian_mean = non_gaussian_accuracies.mean()
-non_gaussian_std = non_gaussian_accuracies.std()
-
-print(f"\nOverall Statistics:")
-print(f"Overall Mean Accuracy: {overall_mean:.2f}% (±{overall_std:.2f}%)")
-print(f"Gaussian Mean Accuracy: {gaussian_mean:.2f}% (±{gaussian_std:.2f}%)")
-print(f"Non-Gaussian Mean Accuracy: {non_gaussian_mean:.2f}% (±{non_gaussian_std:.2f}%)")
-
-# Analyze cluster estimation
-correct_estimations = (gaussian_data['n_centers'] == gaussian_data['estimated_n_centers']).mean()
-print(f"\nCluster Estimation:")
-print(f"Correct estimations: {correct_estimations:.2f}")
+# Print overall insights
+print("\nKey Insights:")
+print("1. The most accurate criteria across all conditions are:", ", ".join(criteria_performance.head(3).index))
+print("2. The least accurate criteria are:", ", ".join(criteria_performance.tail(3).index))
+print(f"3. Cluster standard deviation has the biggest impact on accuracy at {std_impact.index[0]}")
+print(f"4. The number of centers with the highest average accuracy is {centers_impact.index[0]}")
+print(f"5. The criterion with the lowest center estimation error is {center_estimation.index[0]}")

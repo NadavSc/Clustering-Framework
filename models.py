@@ -97,12 +97,125 @@ class GaussianMixture:
 
 
 class UOFC:
-    def __init__(self, max_clusters=10, random_state=42, max_iter=100, m=2, error=1e-5):
+    def __init__(self, max_clusters=10, random_state=42, max_iter=100, m=2, error=1e-5, criterion='silhouette'):
         self.max_clusters = max_clusters
         self.max_iter = max_iter
         self.m = m
         self.error = error
+        self.random_state = random_state
+        self.set_criterion(criterion)
         np.random.seed(random_state)
+
+    def trace_criterion(self):
+        n_clusters = self.membership.shape[1]
+        cluster_assignments = np.argmax(self.membership, axis=1)
+
+        total_trace = 0
+        for cluster_index in range(n_clusters):
+            cluster_data = self.X[cluster_assignments == cluster_index]
+            if len(cluster_data) > 0:
+                cluster_covariance = np.cov(cluster_data.T)
+                cluster_size = len(cluster_data)
+                total_trace += np.trace(cluster_covariance) * cluster_size
+
+        return total_trace * n_clusters
+
+    def fuzzy_covariance_matrix(self, k):
+        diff = self.X - self.centroids[k]
+        weights = np.power(self.membership[:, k], self.m)
+        return np.dot(weights * diff.T, diff) / np.sum(weights)
+
+    def fuzzy_hypervolume_criterion(self):
+        return np.sum([np.linalg.det(self.fuzzy_covariance_matrix(k)) for k in range(self.n_clusters)])
+
+    def partition_density_criterion(self):
+        total_membership_sum = np.sum(self.membership)
+        covariance_matrices = [self.fuzzy_covariance_matrix(k) for k in range(self.n_clusters)]
+
+        cluster_volumes = np.zeros(self.n_clusters)
+        for k in range(self.n_clusters):
+            if np.linalg.det(covariance_matrices[k]) > 0:
+                cluster_volumes[k] = np.sqrt(np.linalg.det(covariance_matrices[k]))
+
+        partition_density = total_membership_sum / np.sum(cluster_volumes)
+        return partition_density
+
+    def average_partition_density_criterion(self):
+        total_membership_sum = np.sum(self.membership)
+        covariance_matrices = [self.fuzzy_covariance_matrix(k) for k in range(self.n_clusters)]
+
+        cluster_volumes = np.array([np.sqrt(np.linalg.det(covariance_matrices[k])) for k in range(self.n_clusters)])
+
+        average_partition_density = (1 / self.n_clusters) * np.sum(total_membership_sum / cluster_volumes)
+        return average_partition_density
+
+    def maximum_average_partition_density_criterion(self):
+        clusters = [self.X[np.argmax(self.membership, axis=1) == k] for k in range(self.n_clusters)]
+        max_membership = np.array([len(cluster) for cluster in clusters])
+
+        covariance_matrices = [self.fuzzy_covariance_matrix(k)
+                               for k in range(self.n_clusters)]
+
+        cluster_volumes = np.array([np.sqrt(np.linalg.det(covariance_matrices[k])) for k in range(self.n_clusters)])
+
+        max_average_partition_density = (1 / self.n_clusters) * np.max(max_membership / cluster_volumes)
+        return max_average_partition_density
+
+    def normalized_partition_coefficient_criterion(self):
+        total_squared_distance = 0
+        for i, data_point in enumerate(self.X):
+            for k in range(self.n_clusters):
+                distance_squared = np.dot(self.centroids[k] - data_point, self.centroids[k] - data_point)
+                total_squared_distance += self.membership[i, k] * distance_squared
+
+        return 1 / (self.n_clusters * total_squared_distance)
+
+    def invariant_criterion(self):
+        if self.centroids.shape[0] == 1:
+            return 0
+
+        clusters = [self.X[np.argmax(self.membership, axis=1) == k] for k in range(self.n_clusters)]
+
+        within_cluster_scatter = np.sum([np.cov(cluster.T) for cluster in clusters], axis=0)
+        between_cluster_scatter = np.cov(self.centroids.T)
+
+        scatter_matrix = np.linalg.inv(within_cluster_scatter) @ between_cluster_scatter
+        invariant_value = np.trace(scatter_matrix)
+
+        return invariant_value * (1 / self.n_clusters)
+
+    def set_criterion(self, criterion):
+        valid_criteria = ['silhouette', 'trace', 'hypervolume', 'partition_density',
+                          'avg_partition_density', 'max_avg_partition_density',
+                          'normalized_partition_coeff', 'invariant']
+        if criterion not in valid_criteria:
+            raise ValueError(f"Invalid criterion. Choose from: {', '.join(valid_criteria)}")
+        self.criterion = criterion
+        self.maximize = criterion in ['silhouette', 'partition_density', 'avg_partition_density', 'max_avg_partition_density']
+
+    def evaluate_partition(self, X, membership, centroids):
+        self.X = X
+        self.membership = membership
+        self.centroids = centroids
+        self.n_clusters = centroids.shape[0]
+
+        if self.criterion == 'silhouette':
+            labels = np.argmax(membership, axis=1)
+            return silhouette_score(X, labels) if len(np.unique(labels)) > 1 else -1
+        elif self.criterion == 'trace':
+            return self.trace_criterion()
+        elif self.criterion == 'hypervolume':
+            return self.fuzzy_hypervolume_criterion()
+        elif self.criterion == 'partition_density':
+            return self.partition_density_criterion()
+        elif self.criterion == 'avg_partition_density':
+            return self.average_partition_density_criterion()
+        elif self.criterion == 'max_avg_partition_density':
+            return self.maximum_average_partition_density_criterion()
+        elif self.criterion == 'normalized_partition_coeff':
+            return self.normalized_partition_coefficient_criterion()
+        elif self.criterion == 'invariant':
+            return self.invariant_criterion()
 
     def initialize_membership(self, n_samples, n_clusters):
         return np.random.rand(n_samples, n_clusters)
@@ -112,15 +225,15 @@ class UOFC:
         denominator = np.sum(np.power(membership, self.m), axis=0)
         return (numerator / denominator).T
 
-    def update_membership(self, X, centroids):
-        distances = cdist(X, centroids, metric='euclidean')
-        return self.calculate_membership(distances)
-
     def calculate_membership(self, distances):
         power = 2 / (self.m - 1)
         tmp = np.power(1 / distances, power)
         denominator = np.sum(tmp, axis=1)
         return tmp / denominator[:, np.newaxis]
+
+    def update_membership(self, X, centroids):
+        distances = cdist(X, centroids, metric='euclidean')
+        return self.calculate_membership(distances)
 
     def fcm(self, X, n_clusters):
         n_samples, n_features = X.shape
@@ -138,35 +251,28 @@ class UOFC:
         return membership, centroids
 
     def fit(self, X):
-        best_score = -np.inf
+        best_score = -np.inf if self.maximize else np.inf
         best_n_clusters = 2
         best_membership = None
         best_centroids = None
 
         for n_clusters in range(2, self.max_clusters + 1):
             membership, centroids = self.fcm(X, n_clusters)
+            score = self.evaluate_partition(X, membership, centroids)
 
-            labels = np.argmax(membership, axis=1)
-
-            unique_labels = np.unique(labels)
-            if len(unique_labels) > 1:
-                score = silhouette_score(X, labels)
-
-                if score > best_score:
-                    best_score = score
-                    best_n_clusters = n_clusters
-                    best_membership = membership
-                    best_centroids = centroids
+            if (self.maximize and score > best_score) or (not self.maximize and score < best_score):
+                best_score = score
+                best_n_clusters = n_clusters
+                best_membership = membership
+                best_centroids = centroids
 
         self.n_clusters = best_n_clusters
         self.membership = best_membership
         self.centroids = best_centroids
         self.labels = np.argmax(best_membership, axis=1)
-        return self.n_clusters, self.centroids, self.labels
+        self.best_score = best_score
 
-    def predict(self, X):
-        membership = self.update_membership(X, self.centroids)
-        return np.argmax(membership, axis=1)
+        return self.n_clusters, self.centroids, self.labels
 
 
 class HierarchicalClustering:

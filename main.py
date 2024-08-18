@@ -65,26 +65,29 @@ def plot_clusters(X, true_labels, predicted_labels, title, accuracy, example_inf
     plt.show()
 
 
-def run_uofc(results, dataset_type, max_clusters, n_centers, random_state, X, y, idx, n_features, cluster_std, verbose):
-    uofc = UOFC(max_clusters=max_clusters, random_state=random_state)
-    estimated_n_centers, centers, y_pred = uofc.fit(X)
-    accuracy = clustering_accuracy(y, y_pred)
+def run_uofc(results, dataset_type, max_clusters, n_centers, random_state, X, y, idx,
+             n_features, cluster_std, criteria, verbose):
+    for criterion in criteria:
+        uofc = UOFC(max_clusters=max_clusters, random_state=random_state, criterion=criterion)
+        estimated_n_centers, centers, y_pred = uofc.fit(X)
+        accuracy = clustering_accuracy(y, y_pred)
 
-    if verbose > 1:
-        example_info = f'n_features: {n_features} | n_centers: {n_centers} | std: {cluster_std}'
-        plot_clusters(X, y, y_pred, f"Simulation {idx + 1} - UOFC", accuracy, example_info)
-    results.append({
-        'id': idx,
-        'algorithm': 'uofc',
-        'dataset_type': dataset_type,
-        'n_features': n_features,
-        'n_centers': n_centers,
-        'estimated_n_centers': estimated_n_centers,
-        'cluster_std': cluster_std,
-        'init_method': None,
-        'distance_metric': None,
-        'accuracy': accuracy
-    })
+        if verbose > 1:
+            example_info = f'n_features: {n_features} | n_centers: {n_centers} | std: {cluster_std}'
+            plot_clusters(X, y, y_pred, f"Simulation {idx + 1} - UOFC", accuracy, example_info)
+        results.append({
+            'id': idx,
+            'algorithm': 'uofc',
+            'dataset_type': dataset_type,
+            'n_features': n_features,
+            'n_centers': n_centers,
+            'estimated_n_centers': estimated_n_centers,
+            'cluster_std': cluster_std,
+            'init_method': None,
+            'distance_metric': None,
+            'criterion': criterion,
+            'accuracy': accuracy
+        })
     return results
 
 
@@ -109,6 +112,7 @@ def run_gmm(results, dataset_type, init_methods, n_centers, random_state, X, y, 
             'cluster_std': cluster_std,
             'init_method': init_method,
             'distance_metric': None,
+            'criterion': None,
             'accuracy': accuracy
         })
     return results
@@ -136,6 +140,7 @@ def run_hc(results, dataset_type, n_centers, X, y, idx, n_features, cluster_std,
             'cluster_std': cluster_std,
             'init_method': None,
             'distance_metric': distance_metric,
+            'criterion': None,
             'accuracy': accuracy
         })
     return results
@@ -147,6 +152,9 @@ def run_algorithms(dataset, algorithms, verbose):
     max_clusters = 7
     init_methods = ['random', 'kmeans++', 'hcm', 'uniform', 'stratified']
     distance_metrics = ['min', 'max', 'avg', 'mean']
+    uofc_criteria = ['silhouette', 'trace', 'hypervolume', 'partition_density',
+                     'avg_partition_density', 'max_avg_partition_density',
+                     'normalized_partition_coeff', 'invariant']
 
     for idx in range(len(dataset)):
         json_object = dataset[str(idx)]
@@ -158,7 +166,7 @@ def run_algorithms(dataset, algorithms, verbose):
 
         if 'uofc' in algorithms:
             results = run_uofc(results, dataset_type, max_clusters, n_centers, random_state, X, y, idx,
-                               n_features, cluster_std, verbose)
+                               n_features, cluster_std, uofc_criteria, verbose)
         if 'gmm' in algorithms:
             results = run_gmm(results, dataset_type, init_methods, n_centers, random_state, X, y, idx,
                               n_features, cluster_std, verbose)
@@ -167,13 +175,14 @@ def run_algorithms(dataset, algorithms, verbose):
                              distance_metrics, verbose)
 
         print(f'Example {idx} has been processed')
+    results = pd.DataFrame(results)
     results.to_csv('results/results.csv', index=False)
 
 
 if __name__ == "__main__":
     verbose = 0
     algorithms = ['gmm', 'uofc', 'hc']
-    with open('data/dataset_small.json', 'r') as openfile:
+    with open('data/dataset.json', 'r') as openfile:
         dataset = json.load(openfile)
 
     run_algorithms(dataset, algorithms, verbose)
