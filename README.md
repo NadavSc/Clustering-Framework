@@ -36,7 +36,7 @@ algorithms = ['gmm', 'uofc', 'hc']
   * verbosity 1 - print information about the examples.
   * verbosity 2 - plot the results.
 
-3. Make sure the savein path is correct:
+3. Make sure the saving path is correct:
 ```
     with open('data/dataset.json', 'r') as openfile:
         dataset = json.load(openfile)
